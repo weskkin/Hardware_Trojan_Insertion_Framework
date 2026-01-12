@@ -1,0 +1,128 @@
+#include "CompatibilityGraph.h"
+#include <iostream>
+
+CompatibilityGraph::CompatibilityGraph(Netlist* nl) : netlist(nl), podem(nl) {}
+
+void CompatibilityGraph::generateTestVectors(const std::vector<Node*>& rareNodes) {
+    std::cout << "Generating Test Vectors for " << rareNodes.size() << " rare nodes..." << std::endl;
+    int successCount = 0;
+    
+    for (size_t i = 0; i < rareNodes.size(); ++i) {
+        Node* node = rareNodes[i];
+        if (node->rare_value == -1) continue; // Should not happen
+        
+        // PODEM logic:
+        // We want to TRIGGER the rare value.
+        // Rare Value 0 -> PODEM target: SA1 (requires input 0).
+        // Rare Value 1 -> PODEM target: SA0 (requires input 1).
+        // generateTest handles translation from desired value to internal fault model.
+        
+        std::map<Node*, int> vec = podem.generateTest(node, node->rare_value);
+        if (!vec.empty()) {
+            testVectors[node] = vec;
+            validRareNodes.push_back(node);
+            successCount++;
+        }
+        
+        if (i % 10 == 0) std::cout << "Processed " << i << "/" << rareNodes.size() << " (Success: " << successCount << ")\r";
+    }
+    std::cout << "PODEM finished. Generated vectors for " << successCount << " nodes.         " << std::endl;
+}
+
+bool CompatibilityGraph::areVectorsCompatible(const std::map<Node*, int>& v1, const std::map<Node*, int>& v2) {
+    // Check conflicts
+    // Iterate over v1 keys
+    for (auto const& [input, val1] : v1) {
+        if (v2.count(input)) {
+            if (v2.at(input) != val1) return false; // Conflict
+        }
+    }
+    return true;
+}
+
+void CompatibilityGraph::buildGraph() {
+    std::cout << "Building Compatibility Graph..." << std::endl;
+    int edgeCount = 0;
+    
+    for (size_t i = 0; i < validRareNodes.size(); ++i) {
+        for (size_t j = i + 1; j < validRareNodes.size(); ++j) {
+            Node* n1 = validRareNodes[i];
+            Node* n2 = validRareNodes[j];
+            
+            if (areVectorsCompatible(testVectors[n1], testVectors[n2])) {
+                adj[n1->id].insert(n2->id);
+                adj[n2->id].insert(n1->id);
+                edgeCount++;
+            }
+        }
+    }
+    std::cout << "Graph built. Edges: " << edgeCount << std::endl;
+}
+
+// In BronKerbosch
+void CompatibilityGraph::bronKerbosch(std::set<int> R, std::set<int> P, std::set<int> X, 
+                                      std::vector<std::vector<Node*>>& cliques, int minSize) {
+    // Safety Break (Result Limit)
+    if (cliques.size() > 1000) return;
+
+    // Safety Break (Recursion Limit)
+    recursionCount++;
+    if (recursionCount % 10000 == 0) std::cout << "Clique Search Step: " << recursionCount << "\r";
+    if (recursionCount > 50000) return;
+
+    if (P.empty() && X.empty()) {
+        if (R.size() >= (size_t)minSize) {
+            std::vector<Node*> clique;
+            // Map IDs back to Node pointers
+            auto& allNodes = netlist->getAllNodes();
+            for (int id : R) clique.push_back(allNodes[id]);
+            cliques.push_back(clique);
+        }
+        return;
+    }
+    
+    // Pivot selection (simple)
+    // if (!P.empty()) ... optimization
+    
+    // Copy P to iterate safely
+    std::set<int> Pi = P;
+    
+    for (int v : Pi) {
+        // Double check recursion limit inside loop to break early
+        if (recursionCount > 1000000) break;
+
+        std::set<int> newR = R; newR.insert(v);
+        
+        std::set<int> newP;
+        for (int p : P) if (adj[v].count(p)) newP.insert(p);
+        
+        std::set<int> newX;
+        for (int x : X) if (adj[v].count(x)) newX.insert(x);
+        
+        bronKerbosch(newR, newP, newX, cliques, minSize);
+        
+        P.erase(v);
+        X.insert(v);
+    }
+}
+
+std::vector<std::vector<Node*>> CompatibilityGraph::findCliques(int minSize) {
+    std::cout << "Finding Cliques (Min Size " << minSize << ")..." << std::endl;
+    std::vector<std::vector<Node*>> cliques;
+    
+    std::set<int> R;
+    std::set<int> P;
+    std::set<int> X;
+    
+    for (Node* n : validRareNodes) P.insert(n->id);
+    
+    recursionCount = 0; // Reset counter
+    bronKerbosch(R, P, X, cliques, minSize);
+    
+    if (recursionCount > 50000) {
+        std::cout << "\nWarning: Clique finding terminated early (Limit 50k reached)." << std::endl;
+    }
+
+    std::cout << "Found " << cliques.size() << " cliques." << std::endl;
+    return cliques;
+}
