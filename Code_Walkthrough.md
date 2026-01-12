@@ -1,6 +1,6 @@
 # Complete Code Walkthrough
 
-This document explains the entire execution flow of the **Hardware Trojan Insertion Framework**, starting from `main.cpp` and diving into every function call across the codebase.
+This document explains the entire execution flow of the **Compatibility Graph Assisted Hardware Trojan Insertion Framework**, starting from `main.cpp` and tracing the logic through all modules.
 
 ---
 
@@ -8,83 +8,76 @@ This document explains the entire execution flow of the **Hardware Trojan Insert
 The execution begins in the `main()` function.
 
 ### A. Batch Directory Setup (Lines 118-120)
-The program defines two directories to scan: `inputs/combinational` and `inputs/sequential`. It iterates through them using `std::filesystem`.
+The program automatically detects and iterates through two directories: `inputs/combinational` and `inputs/sequential`. This allows batch processing of multiple benchmark files.
 
 ### B. `processFile(...)` (Line 13)
-For each `.bench` file found, `main` calls `processFile`. This is the core orchestrator.
+This function manages the lifecycle of a single `.bench` file processing.
 
 #### Step 1: Parsing the Netlist (Line 18)
 It creates a `Netlist` object and calls `netlist.parse(inputPath)`.
 > **Jump to `src/Netlist.cpp` -> `Netlist::parse()`**:
-> *   **Line 66**: Opens the file.
-> *   **Line 91**: Regex matches `INPUT(x)`. Creates a node `x` of type `INPUT`.
-> *   **Line 96**: Regex matches `OUTPUT(y)`. Creates a node `y`.
-> *   **Line 102**: Regex matches gates like `g = NAND(a, b)`.
-> *   **Sequential Logic (Line 117)**: If the gate is `DFF` (Flip-Flop):
->     *   The output `Q` is treated as an **Input** (PPI).
->     *   The input `D` is treated as an **Output** (PPO).
->     *   *Why?* This "Full Scan Assumption" breaks loops, allowing us to test sequential circuits as if they were combinational.
+> *   **Line 65**: Opens and reads the file line-by-line.
+> *   **Line 91**: Recognizes `INPUT(x)` and creates corresponding nodes.
+> *   **Line 102**: Parses gate definitions (e.g., `g = NAND(a, b)`).
+> *   **Sequential Support (Line 117)**: The parser implements the **Full Scan Assumption**:
+>     *   **DFF Outputs (Q)** are treated as **Pseudo-Primary Inputs (PPI)**.
+>     *   **DFF Inputs (D)** are treated as **Pseudo-Primary Outputs (PPO)**.
+>     *   This transforms cyclic sequential circuits into acyclic combinational logic for ATPG analysis.
 
-#### Step 2: Simulation (Line 26)
+#### Step 2: Rare Node Identification (Line 26)
 `main` creates a `Simulator` and calls `sim.findRareNodes(10000, 0.2)`.
 > **Jump to `src/Simulator.cpp` -> `Simulator::findRareNodes()`**:
-> *   **Line 71**: Runs a loop 10,000 times (Monte Carlo).
-> *   **Line 73**: Randomly assigns 0 or 1 to every Input.
-> *   **Line 81**: Calls `evaluate(g)` for every gate.
->     *   **`evaluate()` (Line 55)**: A recursive function. It asks for input values, then calls `computeGate()` (Line 16) to calculate the logic (AND, OR, XOR, etc.).
-> *   **Line 89**: It counts how often each node is `1`.
-> *   **Line 104**: If a node is `1` very rarely (e.g., < 20% of the time), it marks `rare_value = 1`. If it's `0` rarely, `rare_value = 0`.
-> *   **Result**: We now have a list of "Rare Nodes" (Candidates for triggers).
+> *   **Line 71**: Executes a Monte Carlo simulation loop (10,000 iterations).
+> *   **Line 75**: Randomly assigns logic `0` or `1` to all Inputs (including PPIs).
+> *   **Line 81**: Recursively evaluates the circuit logic using `evaluate()`.
+> *   **Line 104**: Flags nodes as **Rare-1** or **Rare-0** if their transition probability is below the threshold (0.2).
 
 #### Step 3: Compatibility Analysis (Line 40)
-`main` creates a `CompatibilityGraph` and calls two critical functions.
-1.  **`cg.generateTestVectors(rareNodes)`**:
-    > **Jump to `src/CompatibilityGraph.cpp`**:
-    > *   **Line 22**: For every Rare Node, it asks: "Can I force this node to its rare value?"
-    > *   It calls `podem.generateTest(node, value)`.
-    >     > **Jump to `src/PODEM.cpp` -> `PODEM::generateTest()`**:
-    >     > *   **Line 350**: Logic Translation. If we want a node to be `1`, we behave as if it's "Stuck-At-0" and try to detect it (setting the value to `D`).
-    >     > *   **Line 354**: Calls `podemRecursion()`.
-    >     >     *   **Line 276**: `getObjective()` finds a gate with an Unknown (`X`) input that needs setting to propagate the fault.
-    >     >     *   **Line 280**: `backtrace()` traces backward from that gate to a Primary Input (PI) to decide what input to set.
-    >     >     *   **Line 324**: It tries setting the PI to 1, then implies logic. If that fails, it backtracks and sets it to 0.
-    >     >     *   **5-Valued Logic**: It uses `0`, `1`, `X`, `D`, `D_BAR` to correctly handle `XOR` gates in sequential circuits (Line 38).
-    > *   **Result**: A "Test Vector" (Input Pattern) that activates the rare node.
+`main` initializes construction of the Compatibility Graph.
 
-2.  **`cg.buildGraph()`**:
-    > **Jump to `src/CompatibilityGraph.cpp`**:
-    > *   **Line 45**: It compares every pair of Rare Nodes.
-    > *   **Line 54**: `areVectorsCompatible()` checks if Vector A and Vector B conflict (e.g., A needs Input1=0, B needs Input1=1).
-    > *   If no conflict, it draws an **Edge** between them in the graph.
+**1. Test Vector Generation** (`cg.generateTestVectors`)
+> **Jump to `src/CompatibilityGraph.cpp`**:
+> *   Iterates through verified Rare Nodes.
+> *   Calls `podem.generateTest(node, rare_value)` to find an input pattern that triggers the node.
+>     > **Jump to `src/PODEM.cpp`**:
+>     > *   **5-Valued Logic**: Implements `0`, `1`, `X`, `D`, `D_BAR` algebra to handle fault sensitization.
+>     > *   **Recursion (Line 268)**: Uses `getObjective()` to find necessary input assignments and `backtrace()` to satisfy them.
+>     > *   Returns a valid input vector if the rare value is controllable and observable.
+
+**2. Graph Construction** (`cg.buildGraph`)
+> **Jump to `src/CompatibilityGraph.cpp`**:
+> *   **Line 45**: Compares Test Vectors for every pair of Rare Nodes.
+> *   **Line 54**: Checks for logical conflicts (e.g., Node A needs Input=0, Node B needs Input=1).
+> *   **Edge Creation**: Adds an edge if vectors are compatible, meaning both nodes can be triggered simultaneously.
 
 #### Step 4: Clique Finding (Line 55)
-`main` asks the user for a "Trigger Size" (e.g., 4) and calls `cg.findCliques(4)`.
+`main` prompts the user for a **Trigger Size** (k) and calls `cg.findCliques(k)`.
 > **Jump to `src/CompatibilityGraph.cpp` -> `findCliques()`**:
-> *   It uses the **Bron-Kerbosch Algorithm** (Line 65) to find a "Clique" (a group of nodes that are ALL connected to each other).
-> *   **Line 67**: It has a safety limit (50,000 steps) to prevent hanging on dense graphs like `s499`.
-> *   **Result**: A list of nodes that can *all* be rare simultaneously (The Trigger).
+> *   **Algorithm**: Uses **Bron-Kerbosch** with pivoting to find fully connected subgraphs (Cliques).
+> *   **Optimization (Line 73)**: Implements a recursion limit (50,000 steps) to ensure termination on dense graphs (like `s499`).
+> *   **Result**: A Clique represents a set of Rare Nodes that can form a valid Trojan Trigger.
 
 #### Step 5: Trojan Generation (Line 96)
-`main` creates a `TrojanGenerator` and calls two functions.
+`main` prompts for **Payload Type** and calls `TrojanGenerator`.
 
-1.  **`tg.generateTrigger(clique)`**:
-    > **Jump to `src/TrojanGenerator.cpp`**:
-    > *   **Line 32**: If the clique is huge (>8), it builds a **Tree** of gates (ANDs feeding ANDs) to avoid fan-in limits.
-    > *   **Line 110**: Otherwise, it builds a **Flat Trigger**. It uses AND gates for Rare-1 nodes and NOR gates for Rare-0 nodes, combining them into a final single wire that goes HIGH when the Trojan triggers.
+**1. Trigger Logic** (`tg.generateTrigger`)
+> **Jump to `src/TrojanGenerator.cpp`**:
+> *   **Line 28**: Analyzes the size of the clique.
+> *   **Tree Optimization (Line 32)**: For large triggers (>8 inputs), generates a multi-level tree of gates to reduce electrical fan-in load.
+> *   **Standard Logic**: Uses AND gates (for Rare-1) and NOR gates (for Rare-0) to create a trigger signal that activates ONLY when the rare condition is met.
 
-2.  **`tg.insertPayload(trigger, config)`**:
-    > **Jump to `src/TrojanGenerator.cpp`**:
-    > *   **Line 138**: **Victim Selection**. It traces downstream from the trigger to find a safe "Victim" wire to attack.
-    > *   **Line 232**: **ID Shifting**. It calls `netlist->shiftIDs()` to rename all nodes *above* the victim. This opens up a numeric "Gap" (e.g., usually IDs are 1, 2, 3... it makes them 1, 2, ... gap ... 10, 11).
-    > *   **Line 254**: **Payload Insertion**. It inserts new gates into that gap based on the user choice:
-    >     *   **XOR**: Inverts the victim wire.
-    >     *   **Performance**: Adds a chain of buffers (Delay).
-    >     *   **Info Leak**: MUXes a secret internal node to the output.
+**2. Payload Insertion** (`tg.insertPayload`)
+> **Jump to `src/TrojanGenerator.cpp`**:
+> *   **Line 138 (Victim Selection)**: Traces downstream to find an observable victim net.
+> *   **Line 231 (ID Shifting)**: Shifts node IDs to assume a stealthy numeric range, creating a "gap" for Trojan gates.
+> *   **TrustHub Payloads**:
+>     1.  **Bit Flip (XOR)**: Inverts the victim's logic value.
+>     2.  **Delay (Performance)**: Inserts a chain of buffers to degrade path timing.
+>     3.  **DoS (Stuck-At)**: Forces the line to `0` or `1`, disabling the circuit segment.
+>     4.  **Info Leak**: Inserts a MUX to leak a secret internal node value to the output.
 
-#### Step 6: Saving (Line 106)
+#### Step 6: Saving the Netlist (Line 106)
 `main` calls `netlist.write(outputPath)`.
 > **Jump to `src/Netlist.cpp` -> `Netlist::write()`**:
-> *   **Line 163**: Writes `INPUT()` list.
-> *   **Line 179**: Writes `OUTPUT()` list.
-> *   **Line 218**: **Topological Sort**. It re-orders the gates so that `TrojanGate` acts as an input to `VictimGate`.
-> *   **Line 203**: **Breaking Cycles**. Critical for sequential circuits (`s499`). It ignores `DFF` feedback loops during sorting so it can write the file as a flat list without getting stuck in an infinite loop.
+> *   **Formatting**: Reconstructs the `.bench` file format.
+> *   **Cycle Breaking (Line 203)**: During topological sort, DFF loops are explicitly managed to prevent infinite recursion, ensuring correct writing of sequential circuits.
