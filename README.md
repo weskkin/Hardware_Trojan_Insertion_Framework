@@ -39,6 +39,24 @@ To run this project, you need a C++ compiler installed on your system:
 *   `src/`: C++ Source Code (`Netlist`, `PODEM`, `CompatibilityGraph`, etc.).
 *   `inputs/`: Place your `.bench` files here (subfolders: `combinational`, `sequential`).
 *   `outputs/`: Generated Trojan-infected netlists will appear here.
+*   `Final_Report.md`: Comprehensive validation report comparing results with the reference paper.
+
+## 📊 Validation & Reporting
+The project includes a full validation suite to reproduce experiments from the reference paper:
+
+*   **Algorithm 1 Validation** (`validate_alg1.cpp`): Reproduces Rare Node identification results (Paper Fig 2 & 3).
+*   **Algorithm 2 Validation** (`validate_alg2.cpp`): Generates Compatibility Graphs and finds cliques.
+*   **Algorithm 3 Validation** (`validate_alg3.cpp`): Inserts and tests Trojans for functional stealth.
+*   **Full Metrics** (`validate_tables.cpp`): Generates Area Overhead and Detection Probability tables.
+
+### Running Validation
+Each algorithm has a corresponding batch script:
+1.  `run_validation_alg1.bat` -> Generates `validation_fig2.csv`
+2.  `run_validation_alg2.bat` -> Generates `validation_alg2_cliques.csv`
+3.  `run_validation_alg3.bat` -> Generates `validation_tables.csv`
+
+### Visualization
+*   `visualize_alg1.py`: Python script to generate plots (`validation_fig2_plot.png`) from the CSV data.
 
 ## 🧪 Usage Guide
 1.  Upon running, the tool scans the `inputs` directory.

@@ -63,12 +63,18 @@ void CompatibilityGraph::buildGraph() {
 void CompatibilityGraph::bronKerbosch(std::set<int> R, std::set<int> P, std::set<int> X, 
                                       std::vector<std::vector<Node*>>& cliques, int minSize) {
     // Safety Break (Result Limit)
-    if (cliques.size() > 1000) return;
+    if (cliques.size() > 1000) {
+        pruningOccurred = true;
+        return;
+    }
 
     // Safety Break (Recursion Limit)
     recursionCount++;
     if (recursionCount % 10000 == 0) std::cout << "Clique Search Step: " << recursionCount << "\r";
-    if (recursionCount > 50000) return;
+    if (recursionCount > 50000) {
+        pruningOccurred = true;
+        return;
+    }
 
     if (P.empty() && X.empty()) {
         if (R.size() >= (size_t)minSize) {
@@ -89,7 +95,10 @@ void CompatibilityGraph::bronKerbosch(std::set<int> R, std::set<int> P, std::set
     
     for (int v : Pi) {
         // Double check recursion limit inside loop to break early
-        if (recursionCount > 1000000) break;
+        if (recursionCount > 1000000) {
+            pruningOccurred = true;
+            break;
+        }
 
         std::set<int> newR = R; newR.insert(v);
         
@@ -117,6 +126,7 @@ std::vector<std::vector<Node*>> CompatibilityGraph::findCliques(int minSize) {
     for (Node* n : validRareNodes) P.insert(n->id);
     
     recursionCount = 0; // Reset counter
+    pruningOccurred = false; // Reset flag
     bronKerbosch(R, P, X, cliques, minSize);
     
     if (recursionCount > 50000) {
@@ -125,4 +135,22 @@ std::vector<std::vector<Node*>> CompatibilityGraph::findCliques(int minSize) {
 
     std::cout << "Found " << cliques.size() << " cliques." << std::endl;
     return cliques;
+}
+
+int CompatibilityGraph::getGraphEdgeCount() const {
+    int edgeCount = 0;
+    for (const auto& [nodeId, neighbors] : adj) {
+        edgeCount += neighbors.size();
+    }
+    return edgeCount / 2; // Each edge counted twice in adjacency list
+}
+
+double CompatibilityGraph::getGraphDensity() const {
+    int V = validRareNodes.size();
+    if (V <= 1) return 0.0;
+    
+    int E = getGraphEdgeCount();
+    int maxEdges = (V * (V - 1)) / 2;
+    
+    return (double)E / maxEdges;
 }

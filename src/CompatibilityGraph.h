@@ -18,6 +18,19 @@ public:
     // 3. Find cliques of size k (or max cliques)
     // Returns a list of cliques, where each clique is a vector of Nodes.
     std::vector<std::vector<Node*>> findCliques(int minSize);
+    
+    // Validation/Statistics Methods
+    int getValidRareNodeCount() const { return validRareNodes.size(); }
+    int getGraphNodeCount() const { return validRareNodes.size(); }
+    int getGraphEdgeCount() const;
+    double getGraphDensity() const;
+    bool wasPruned() const { return pruningOccurred; }
+    long long getRecursionCount() const { return recursionCount; }
+    
+    // Helper to get test vector for a specific rare node (for verification)
+    const std::map<Node*, int>& getTestVector(Node* rareNode) {
+        return testVectors[rareNode];
+    }
 
 private:
     Netlist* netlist;
@@ -37,4 +50,5 @@ private:
                       std::vector<std::vector<Node*>>& cliques, int minSize);
 
     long long recursionCount = 0;
+    bool pruningOccurred = false;
 };

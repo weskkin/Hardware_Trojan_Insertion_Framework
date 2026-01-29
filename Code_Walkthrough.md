@@ -81,3 +81,30 @@ It creates a `Netlist` object and calls `netlist.parse(inputPath)`.
 > **Jump to `src/Netlist.cpp` -> `Netlist::write()`**:
 > *   **Formatting**: Reconstructs the `.bench` file format.
 > *   **Cycle Breaking (Line 203)**: During topological sort, DFF loops are explicitly managed to prevent infinite recursion, ensuring correct writing of sequential circuits.
+
+---
+
+## 2. Validation Suite
+Separate from the main interactive tool, the project includes standalone validators to reproduce paper results.
+
+### A. Rare Node Validation (`validate_alg1.cpp`)
+*   **Purpose**: Bulk simulation to plot Rare Nodes vs. Threshold for all inputs.
+*   **Key Logic**:
+    *   Iterates thresholds $\theta \in [0.0, ..., 0.3]$.
+    *   Runs Monte Carlo (10k vectors) for every benchmark.
+    *   Exports `validation_fig2.csv` for plotting.
+
+### B. Compatibility Validation (`validate_alg2.cpp`)
+*   **Purpose**: Metrics for Graph Density and Clique Finding performance.
+*   **Key Logic**:
+    *   Builds Compatibility Graph.
+    *   Measures `std::chrono` duration for graph build vs. clique find.
+    *   Outputs `validation_alg2_cliques.csv` containing Node Count, Edge Count, Density, and execution times.
+
+### C. Trojan Stealth Validation (`validate_tables.cpp`)
+*   **Purpose**: Generates Table II (Detection) and Table V (Area).
+*   **Key Logic**:
+    *   Inserts the Trojan (Alg 3).
+    *   **Area**: Calculates `(TrojanGates - OriginalGates) / OriginalGates`.
+    *   **Stealth**: Runs 100,000 random vectors. Checks if the Trojan Trigger activates accidentally.
+    *   Exports `validation_tables.csv`.

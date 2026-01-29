@@ -99,13 +99,13 @@ void Simulator::findRareNodes(int numVectors, double thresholdRatio) {
         if (n->type == GateType::INPUT || n->type == GateType::OUTPUT) continue; // Focus on internal nodes
         
         // Check for Rare 1
-        if (onesCount[n->id] <= threshold) {
+        if (onesCount[n->id] < threshold) {
             n->rare_value = 1;
             rareCount++;
             // std::cout << "Node " << n->name << " is Rare-1 (Count " << onesCount[n->id] << ")" << std::endl;
         }
         // Check for Rare 0
-        else if ((numVectors - onesCount[n->id]) <= threshold) {
+        else if ((numVectors - onesCount[n->id]) < threshold) {
             n->rare_value = 0;
             rareCount++;
             // std::cout << "Node " << n->name << " is Rare-0 (Count " << (numVectors - onesCount[n->id]) << ")" << std::endl;
