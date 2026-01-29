@@ -4,6 +4,9 @@
 
 ---
 
+⚠️From now on, please open pull requests for the report, tables, all your questions. If possible, open separate pull requests for each task or file or question. This will help us progress more clearly.
+⚠️I created a separate branch for this reason and did not want to break anything. The sentences marked with ‘⚠️’ are mine.
+
 ## 1. Project Overview
 This report details the implementation and validation of the graph-based Hardware Trojan Insertion Framework. The goal was to reproduce the methodology for identifying **Rare Nodes** (Algorithm 1), finding **Trigger Cliques** via Compatibility Graphs (Algorithm 2), and successfully **Inserting and Activating** Hardware Trojans (Algorithm 3).
 
@@ -28,18 +31,26 @@ Unlike the reference paper, this implementation includes the following specific 
 ### Results (Reproducing Fig. 2 & Fig. 3)
 Comparison of our results with the reference paper's rare node analysis (Data from: `validation_fig2.csv`).
 
-| Circuit | Rare Nodes @ 20% | Percentage | Paper Comparison | Note |
-|:---:|:---:|:---:|:---:|:---:|
-| **c2670** | 324 | **22.72%** | ~20% | ✅ Acceptable Match |
-| **c3540** | 651 | **37.87%** | >30% | ✅ High |
-| **c5315** | 525 | **21.13%** | "0" | ⭐ **Improved** |
-| **c6288** | 599 | **24.47%** | "0" | ⭐ **Improved** |
-| **s1423** | 129 | **17.25%** | ~20% | ✅ Acceptable Match |
-| **s13207**| 1947 | **22.51%** | ~22% | ✅ Acceptable Match |
-| **s15850**| 2353 | **22.66%** | ~22% | ✅ Acceptable Match |
-| **s35932**| 0 | 0.00% | >10% | ⚠️ Outlier |
+| Circuit | Rare Nodes @ 20% | Percentage | Paper Comparison | Note |Circuit Description|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| **c2670** | 324 | **22.72%** | ~20% | ✅ Acceptable Match |12-bit ALU & controller|
+| **c3540** | 651 | **37.87%** | >30% | ✅ High |8-bit ALU, shifter, bcd operations|
+| **c5315** | 525 | **21.13%** | "0" | ⭐ **Improved** |9-bit ALU|
+| **c6288** | 599 | **24.47%** | "0" | ⭐ **Improved** |16x16Multiplier = 32inv + 2384gates|
+| **s1423** | 129 | **17.25%** | ~20% | ✅ Acceptable Match ||
+| **s13207**| 1947 | **22.51%** | ~22% | ✅ Acceptable Match |534 D-FF + 5378inv + 2573gates|
+| **s15850**| 2353 | **22.66%** | ~22% | ✅ Acceptable Match |638 D-FF + 6324inv + 3448gates|
+| **s35932**| 0 | 0.00% | >10% | ⚠️ Outlier |1728 D-FF + 3861inv + 12204gates|
 
-> **Note:** The paper reported *zero* rare nodes for `c5315`/`c6288`. Our implementation found ~20%, enabling Trojan insertion on these benchmarks where the paper failed. `s35932` remains high-activity (0 rare nodes) under uniform random scan.
+⚠️Benchmark info and files:: https://sportlab.usc.edu/~msabrishami/benchmarks.html
+
+⚠️For s35932, we should check the average transition count for thresholds < 0.25, such as th = 0.1 (maybe avg. count ≈ 1100).
+
+⚠️PS: th = 0.2 is quite large. In the literature, th = 0.1 is usually the upper bound. The authors are not really targeting realistic rare nodes; their main goal is to show the improvement of Alg.2. Since this is a conference paper, very strong claims are not required, and the DATE conference is among the top ones in our field. 
+
+> **Note:** The paper reported *zero* rare nodes for  `c5315`/`c6288`. (Also c2670, I asked the authors about this. Let’s see what they say.)
+> Our implementation found ~20%, enabling Trojan insertion on these benchmarks where the paper failed. `s35932` remains high-activity (0 rare nodes) under uniform random scan.
+
 
 ### Detailed Data Analysis (Fig. 2 & Fig. 3 Reproduction)
 
@@ -72,7 +83,7 @@ Showing how the rare node count stabilizes as we increase random test vectors (D
 | **s15850**| 22.2% | 22.5% | 22.5% | ✅ High |
 
 *Observation:* The rare node percentage converges quickly. 10,000 vectors are sufficient for stable identification.
-
+⚠️this part is good :)
 ---
 
 ## 3. Algorithm 2: Compatibility Graph Construction
@@ -95,6 +106,12 @@ Analysis of Graph Density and Clique Availability (Corresponding to Paper Table 
 | **s1423** | 0.1000 | **5** | ~22,093 | ✅ Dense |
 | **s13207**| 0.0755 | **1** (Pruned) | 15,000 | ✅ Complex |
 | **s15850**| 0.0123 | **3** (Pruned) | 10,000 | ✅ Complex |
+
+The graph/circuit structures of c3540 and c6288 are similar, since one is a multiplier and the other contains a shifter.
+
+⚠️Since the main point of this paper is Algorithm 2, let’s add the generation time (seconds) to the table. For the ISCAS85 (cxx) circuits, how different are the results from the paper? The paper reports a maximum of about 202 seconds. If your code is much slower(such as x10), we should review it step by step. The issue is not only runtime, but also the number of subgraphs.
+⚠️This part is a bit challenging, and the table results raise some concerns, needs to check code step by step.
+⚠️I am a bit confused about your stealth argument. If the goal is to build realistic, hard to activate Trojans, wouldn’t we normally start with a much stricter threshold in Algorithm 1 (for example θ = 0.01 or 0.05)? However, here Algorithm 1 uses a permissive value (θ = 0.2, 10k vectors), which increases the number of ‘rare’ nodes, and then your Algorithm 2 drastically reduces the valid combinations. If Algorithm 2 already reduces the activation probability so strongly, why do we try to increase it first in Algorithm 1? It seems that stealth mainly comes from Algorithm 2 rather than from true rarity in Algorithm 1. Am I missing something here?
 
 **Analysis:**
 Our clique counts are significantly lower than the paper's reported subgraph counts across all benchmarks. This is primarily due to:
@@ -157,10 +174,12 @@ For large sequential circuits (`s13207`, `s15850`), the compatibility graph beco
 *   **Success (`c2670`, `c5315`, `c3540`, `c6288`, `s15850`)**: The Trojan remained silent during normal operation but successfully disrupted the circuit when the specific attack vector was applied.
 *   **Partial (`s1423`, `s13207`)**: The Trojan was inserted, but activation during validation was inconsistent due to sequential state loading issues in the simple simulator, which is expected for sequential circuits without full scan-chain control.
 
+  ⚠️I could not find this part in the document. I think this is referred to differently in the titled ‘2. Detection Analysis (Paper Table II)’.
+
 ### Additional Metrics (Paper Tables II, III, V)
 We quantified the physical impact, performance, and stealthiness of the inserted Trojans.
 
-**1. Area Overhead (Paper Table V)**
+**1. Area Overhead (Paper Table V)** 
 The overhead is minimal, confirming the "Stealthy" nature of the insertion. (Data from `validation_tables.csv`).
 
 | Circuit | Our Overhead (%) | Paper Overhead (%) | Difference |
@@ -180,7 +199,9 @@ The overhead is minimal, confirming the "Stealthy" nature of the insertion. (Dat
 - This counts the number of additional logic gates added (AND, NOR, XOR trees)
 - Standard approach for RTL/logical analysis
 
-*Paper's Method (Unknown):*
+*Paper's Method:*
+The layout shows the area usage of each circuit block, and the percentages are visible. So this part is not ambiguous, area overhead is clear in the paper.
+
 - The paper does **not document** how area overhead was calculated
 - Possible methods include:
   - Physical area estimation (post-synthesis/layout)
@@ -189,14 +210,20 @@ The overhead is minimal, confirming the "Stealthy" nature of the insertion. (Dat
   - More complex payload implementations
 
 *Conclusion:* While our gate-count overhead is demonstrably low (0.04-1.33%), we **cannot definitively claim superiority** over the paper without knowing their exact methodology. The difference may reflect:
-1. **Measurement methodology** (gate count vs. physical area)
+1. **Measurement methodology** (gate count vs. physical area)  
 2. **Trojan complexity** (minimal trigger logic vs. complex payloads)
 3. Both factors combined
+
+⚠️Actually, we can say none of the above. In this paper, the important point is not the type of Trojan, but the number of trigger nodes, which its define as the Trojan input size. As this number increases, generating vectors that satisfy these conditions using Algorithm 2 becomes more difficult. 
+
+⚠️Gate-count normalization looks fine, but area is not the main point here. We can skip this part.
 
 All our values remain well below the 5% stealth threshold, confirming effective minimization regardless of measurement approach.
 
 **2. Detection Analysis (Paper Table II)**
 We simulated 100,000 random vectors to see if the Trojan triggers accidentally (Random Pattern Detection). (Data from `validation_tables.csv`).
+
+⚠️I checked the validation_tables.csv file and I think detection probability is calculated as activations / 100,000. For example, for c3540, activations is 6231. How is this value obtained? Since a 2 input Trojan was inserted, does this mean the number of test vectors that satisfy both trigger conditions at the same time?
 
 | Circuit | Trigger Size | Random Vectors | Detection Coverage (Random) |
 |:---:|:---:|:---:|:---:|
@@ -212,6 +239,8 @@ We simulated 100,000 random vectors to see if the Trojan triggers accidentally (
 
 **3. Insertion Time (Paper Table III)**
 Total time to identify rare nodes, build graph, and find cliques (Data from `validation_alg2_cliques.csv`).
+
+⚠️I will check this part after Alg.2 and Table II become clearer.
 
 | Circuit | Our Time (min) | Paper (Proposed) (min) | RL-Based (min) | vs. Paper | vs. RL |
 |:---:|:---:|:---:|:---:|:---:|:---:|
