@@ -48,6 +48,15 @@ Comparison of our results with the reference paper's rare node analysis (Data fr
 
 ⚠️PS: th = 0.2 is quite large. In the literature, th = 0.1 is usually the upper bound. The authors are not really targeting realistic rare nodes; their main goal is to show the improvement of Alg.2. Since this is a conference paper, very strong claims are not required, and the DATE conference is among the top ones in our field. 
 
+✅ **Validation Result for s35932**: I performed a targeted sweep of `s35932` (10,000 vectors) with thresholds $\theta \in \{0.05, 0.10, 0.15, 0.20, 0.25\}$ to test this hypothesis.
+*   **Result**: **0 nodes** found for any threshold $\theta \le 0.20$.
+*   **Activity Floor**: The first rare nodes only appear at $\theta=0.25$, yielding **4,375 nodes** with an average transition count of **~2,459** (24.6%).
+*   **Conclusion**: The circuit's baseline activity is significantly higher (~25%) than your prediction (~11%), confirming why standard thresholds failed to identify candidates.
+
+💡 **Analyst Response**: I completely agree with your assessment.
+*   **Insight**: The paper likely uses the "permissive" $\theta=0.2$ specifically to artificially inflate the candidate pool, creating large/dense graphs to demonstrate Algorithm 2's efficiency.
+*   **Stealth Implication**: Using such a high threshold enables the "clique finding" demo but compromises "Stealth," as seen in our combinational results (12% detection). For practical, meaningful stealth, a strictly lower threshold ($\theta \le 0.1$) is indeed required.
+
 > **Note:** The paper reported *zero* rare nodes for  `c5315`/`c6288`. (Also c2670, I asked the authors about this. Let’s see what they say.)
 > Our implementation found ~20%, enabling Trojan insertion on these benchmarks where the paper failed. `s35932` remains high-activity (0 rare nodes) under uniform random scan.
 

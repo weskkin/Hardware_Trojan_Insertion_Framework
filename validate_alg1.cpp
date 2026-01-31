@@ -160,19 +160,90 @@ void validateFigure3() {
     std::cout << "\nResults saved to: validation_fig3.csv\n";
 }
 
+// Special Validation for Supervisor for s35932
+void validateS35932TransitionCounts() {
+    std::cout << "\n=== Validating s35932 Transition Counts (Supervisor Request) ===\n";
+    std::string benchPath = "inputs/sequential/s35932.bench";
+    if (!fs::exists(benchPath)) {
+        std::cout << "Skipping s35932 (not found)\n";
+        return;
+    }
+
+    Netlist netlist;
+    if (!netlist.parse(benchPath)) {
+        std::cerr << "Failed to parse " << benchPath << "\n";
+        return;
+    }
+    
+    Simulator sim(&netlist);
+    int numVectors = 10000;
+    // Ensure vector is sized to max ID + 1 to be safe
+    int maxId = 0;
+    for(Node* n : netlist.getAllNodes()) if(n->id > maxId) maxId = n->id;
+    std::vector<int> onesCount(maxId + 1, 0);
+
+    // Run Simulation Locally to get counts
+    for (int i = 0; i < numVectors; ++i) {
+        sim.clearValues();
+        for (Node* in : netlist.getInputs()) in->value = std::rand() % 2;
+        for (Node* g : netlist.getGates()) sim.evaluate(g);
+        for (Node* out : netlist.getOutputs()) sim.evaluate(out);
+        
+        for (Node* n : netlist.getAllNodes()) {
+            if (n->value == 1) onesCount[n->id]++; 
+        }
+        if (i % 1000 == 0) std::cout << "Sim " << i << "\r";
+    }
+
+    std::vector<double> thresholds = {0.05, 0.10, 0.15, 0.20, 0.25};
+    
+    std::cout << "\nThreshold Analysis for s35932 (" << numVectors << " vectors):\n";
+    std::cout << "Theta | Thresh Count | Nodes Found | Avg Occurrences\n";
+    std::cout << "------+--------------+-------------+----------------\n";
+    
+    for (double th : thresholds) {
+        int limit = (int)(numVectors * th);
+        long long totalOccurrences = 0;
+        int rareNodeCount = 0;
+        
+        for (Node* n : netlist.getAllNodes()) {
+            if (n->type == GateType::INPUT || n->type == GateType::OUTPUT) continue;
+            
+            int c1 = onesCount[n->id];
+            int c0 = numVectors - c1;
+            
+            if (c1 < limit) {
+                totalOccurrences += c1;
+                rareNodeCount++;
+            } else if (c0 < limit) {
+                totalOccurrences += c0;
+                rareNodeCount++;
+            }
+        }
+        
+        double avg = (rareNodeCount > 0) ? (double)totalOccurrences / rareNodeCount : 0.0;
+        std::cout << std::fixed << std::setprecision(2) << th << "  | " 
+                  << std::setw(12) << limit << " | " 
+                  << std::setw(11) << rareNodeCount << " | " 
+                  << std::setw(11) << avg << "\n";
+    }
+    std::cout << "========================================================\n";
+}
+
 int main(int argc, char** argv) {
     std::cout << "========================================\n";
     std::cout << "  Algorithm 1 Validation Tool\n";
     std::cout << "  Paper: Compatibility Graph Assisted HT Insertion\n";
     std::cout << "========================================\n";
     
-    validateFigure2();
-    validateFigure3();
+    // validateFigure2();
+    // validateFigure3();
+    validateS35932TransitionCounts();
     
     std::cout << "\n=== Validation Complete ===\n";
-    std::cout << "Generated files:\n";
-    std::cout << "  - validation_fig2.csv (Threshold sweep)\n";
-    std::cout << "  - validation_fig3.csv (Vector count sweep)\n";
+    // std::cout << "Generated files:\n";
+    // std::cout << "  - validation_fig2.csv (Threshold sweep)\n";
+    // std::cout << "  - validation_fig3.csv (Vector count sweep)\n";
     
     return 0;
 }
