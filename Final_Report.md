@@ -270,6 +270,22 @@ We analyzed how the total runtime changes as we search for larger cliques ($q=2$
 
   ⚠️I could not find this part in the document. I think this is referred to differently in the titled ‘2. Detection Analysis (Paper Table II)’.
 
+  ✅ **Analyst Response**: You are correct that both sections relate to Trojan activation, but they measure **different aspects**:
+  
+  **Table III (Validation Results)** - Tests **intentional activation**:
+  *   **Purpose**: Verify the Trojan can be activated when desired using the ATPG-generated attack vector
+  *   **Method** (`validate_alg3.cpp`): Apply the specific input pattern that satisfies ALL trigger conditions simultaneously
+  *   **Result**: "Active (1)" means the trigger logic output was 1 when we applied the attack vector
+  *   **Interpretation**: This validates Algorithm 2's correctness—the clique nodes are truly compatible
+  
+  **Detection Analysis (Paper Table II)** - Tests **accidental activation (stealth)**:
+  *   **Purpose**: Measure the probability of accidental trigger during normal operation
+  *   **Method** (`validate_tables.cpp`): Simulate 100,000 random input vectors and count how many activate the trigger
+  *   **Result**: Detection probability = (activations / 100,000)
+  *   **Interpretation**: This validates stealth—lower probability means harder to detect
+  
+  These are complementary tests: Table III confirms "our Trojan works when we want it to," while Detection Analysis confirms "it stays hidden when we don't."
+
 ### Additional Metrics (Paper Tables II, III, V)
 We quantified the physical impact, performance, and stealthiness of the inserted Trojans.
 
@@ -310,6 +326,27 @@ The layout shows the area usage of each circuit block, and the percentages are v
 
 ⚠️Actually, we can say none of the above. In this paper, the important point is not the type of Trojan, but the number of trigger nodes, which its define as the Trojan input size. As this number increases, generating vectors that satisfy these conditions using Algorithm 2 becomes more difficult. 
 
+✅ **Analyst Response**: You are absolutely correct. I will clarify this distinction:
+
+**Trigger Input Size (Number of Trigger Nodes) is the Dominant Factor:**
+*   **Overhead Calculation**: Our overhead is calculated as `(TrojanGates - OriginalGates) / OriginalGates`. For a trigger with `q` nodes:
+    *   **Trigger Logic**: We add an AND/NOR tree to combine the `q` rare node signals. This requires approximately `q-1` gates (binary tree structure).
+    *   **Payload**: Minimal—just XORing the trigger with one victim output (1 XOR gate).
+    *   **Total Added**: ~`q` gates (dominated by trigger tree, not payload type).
+
+*   **ATPG Difficulty**: As you noted, larger `q` makes Algorithm 2 harder:
+    *   Must find a single input vector that satisfies `q` different rare-node conditions simultaneously
+    *   Compatibility graph becomes sparser (fewer edges) as constraint increases
+    *   Our data confirms this: circuits with `q=4` (c2670, c5315, s1423) found fewer cliques than `q=2` circuits
+
+**Payload Type is Secondary:**
+*   XOR vs AND vs Delay: All add ~1-2 gates
+*   Paper's higher overhead (1.26-5.4%) vs ours (0.04-1.33%) likely reflects:
+    1.  Different trigger sizes used (we used `q=2-5`, unclear what paper used)
+    2.  Different area measurement methodology (transistor count vs gate count)
+
+**Corrected Conclusion**: The overhead difference primarily depends on **trigger input size `q`**, not payload complexity. Without knowing the paper's `q` values, we cannot definitively compare. 
+
 ⚠️Gate-count normalization looks fine, but area is not the main point here. We can skip this part.
 
 All our values remain well below the 5% stealth threshold, confirming effective minimization regardless of measurement approach.
@@ -318,6 +355,49 @@ All our values remain well below the 5% stealth threshold, confirming effective 
 We simulated 100,000 random vectors to see if the Trojan triggers accidentally (Random Pattern Detection). (Data from `validation_tables.csv`).
 
 ⚠️I checked the validation_tables.csv file and I think detection probability is calculated as activations / 100,000. For example, for c3540, activations is 6231. How is this value obtained? Since a 2 input Trojan was inserted, does this mean the number of test vectors that satisfy both trigger conditions at the same time?
+
+✅ **Analyst Response**: Yes, you are exactly correct! It's in the this in the code (`validate_tables.cpp` lines 94-119):
+
+**How Activations are Counted:**
+
+1. **Trigger Construction**: For c3540 with `q=2`, we selected 2 rare nodes and connected them via an AND/NOR gate tree to create the trigger logic
+   
+2. **Simulation Loop** (`validate_tables.cpp` lines 101-122):
+   ```cpp
+   for(int i=0; i<100000; ++i) {
+       // Apply random input vector
+       for(Node* in : netlist.getInputs()) {
+           in->value = std::rand() % 2;
+       }
+       // Evaluate entire circuit including trigger logic
+       for(Node* g : netlist.getGates()) sim.evaluate(g);
+       
+       // Check if trigger activated
+       if (sim.evaluate(trigger) == 1) {
+           activations++;  // Trigger fired!
+       }
+   }
+   ```
+
+3. **What "Trigger == 1" Means**:
+   *   The trigger is an AND/NOR tree combining the rare nodes
+   *   For c3540 with 2 trigger nodes (let's call them A and B):
+       *   Node A is "rare-1" (supposed to be 1 only ~20% of time)
+       *   Node B is "rare-1" (supposed to be 1 only ~20% of time)
+       *   Trigger = A AND B (both must be at their rare values simultaneously)
+   *   **Trigger == 1** means BOTH nodes A and B reached their rare values (1) at the same time
+
+**For c3540 Specifically:**
+*   **Activations = 6241** out of 100,000 random vectors
+*   This means: Out of 100k random inputs, 6241 inputs caused BOTH trigger nodes to simultaneously be 1
+*   **Detection Probability = 6.241%**
+*   **Interpretation**: Despite using "rare" nodes (each ≤20% activity), their joint activation is 6.2%—not stealthy!
+
+**Why So High?**
+*   Individual probabilities: P(A=1) ≤ 0.2, P(B=1) ≤ 0.2
+*   If independent: P(A=1 AND B=1) ≤ 0.04 (4%)
+*   Actual: 6.2% suggests A and B are **positively correlated** (not independent)
+*   This confirms your earlier observation: θ=0.2 is too permissive for guaranteed stealth
 
 | Circuit | Trigger Size | Random Vectors | Detection Coverage (Random) |
 |:---:|:---:|:---:|:---:|
