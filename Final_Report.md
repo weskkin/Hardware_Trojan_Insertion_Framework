@@ -213,25 +213,31 @@ Our clique counts are significantly lower than the paper's reported subgraph cou
 - **Stricter stealth**: Fewer compatible nodes means tighter trigger conditions, potentially improving stealth (validated in sequential circuits).
 
 ### Performance Analysis
-**1. Effect of Clique Size (q) on Duration**
-We analyzed how the runtime changes as we search for larger cliques ($q=2$ vs $q=10$). (Data from `validation_alg2_cliques.csv`).
+**1. Effect of Clique Size (q) on Runtime**
+We analyzed how the total runtime changes as we search for larger cliques ($q=2$ vs $q=10$). (Data from `validation_alg2_cliques.csv`).
 
-| Circuit | Time ($q=2$) | Time ($q=10$) | Trend |
-|:---:|:---:|:---:|:---:|
-| **c5315** | 34.5s | 40.7s | +18% (Minor increase) |
-| **c2670** | 17.0s | 17.1s | ~0% (No change) |
-| **c3540** | 53.3s | 54.0s | +1.3% (No change) |
-| **c6288** | 42.8s | 44.5s | +4% (Minor increase) |
-| **s1423** | 5.1s | 4.8s | ~0% (No change) |
-| **s13207**| 1227s | 1191s | -3% (Pruning dominance) |
-| **s15850**| 1806s | 1715s | -5% (Pruning dominance) |
+| Circuit | Total Time ($q=2$) | Total Time ($q=10$) | Change | Dominant Factor |
+|:---:|:---:|:---:|:---:|:---:|
+| **c2670** | 17.5s | 17.5s | 0% | PODEM (17.4s) |
+| **c3540** | 55.7s | 54.1s | -3% | PODEM (54-56s) |
+| **c5315** | 35.7s | 36.5s | +2% | PODEM (34s) |
+| **c6288** | 43.2s | 43.2s | 0% | PODEM (43s) |
+| **s1423** | 5.0s | 5.0s | 0% | PODEM (5s) |
+| **s13207**| 1252s | 1286s | +3% | PODEM (1170-1222s) |
+| **s15850**| 1941s | 1810s | -7% | PODEM (1764-1928s) |
 
-*Insight:* Unlike the paper's exponential complexity claims, our sparse graphs allow for very fast clique finding even at higher $q$. The dominant cost is the PODEM test generation (Algorithm 2a), which is constant ($~10-50s$) regardless of $q$.
+**Key Findings:**
+1. **Runtime is Independent of q**: Total time varies by only ±7% across q=2 to q=10 for all circuits
+2. **PODEM is the Bottleneck**: Test generation accounts for >95% of total time (e.g., 1928s out of 1941s for s15850)
+3. **Clique Finding is Negligible**: Graph construction and clique finding combined take <90s even for the largest circuits (s13207: 46-92s, s15850: 10-45s)
+4. **Circuit Complexity Matters More**: Runtime ranges from 5s (s1423) to 1941s (s15850) based on circuit size and sequential depth, not clique size
 
-**2. Pruning Efficacy**
-For large sequential circuits (`s13207`, `s15850`), the compatibility graph becomes extremely dense in local regions, creating an explosion of potential subgraphs.
-*   **Result**: The Bron-Kerbosch algorithm was successfully pruned (limited to finding *some* cliques rather than *all*).
-*   **Outcome**: We found valid cliques for insertion (size 2-10) in < 1200s, preventing infinite runtime while ensuring Trojan insertion is possible.
+*Insight:* Unlike the paper's exponential complexity claims, our sparse compatibility graphs make clique finding extremely fast (<4s for all circuits, <1s for most). The dominant cost is **PODEM test generation**, which is **constant for a given circuit** regardless of $q$ (±10% variation), but varies widely across circuits (5s to 1900s) based on their complexity.
+
+**2. Sequential vs Combinational Performance**
+*   **Combinational circuits** (c2670, c3540, c5315, c6288): PODEM completes in 17-56s
+*   **Sequential circuits** (s1423, s13207, s15850): PODEM ranges from 5s (dense, simple state machine) to 1900s (large, complex state space)
+*   **Bottleneck**: Our non-parallel, academic ATPG struggles with large sequential circuits requiring state-space exploration
 
 
 ---
