@@ -22,9 +22,11 @@ struct TableMetrics {
     int trojanGates;
     double areaOverhead; // %
     int triggerSize;
-    int detectedCount;
+    int tcCount;         // TC: Trigger activated (internally), regardless of output
+    int dcCount;         // DC: Trigger activated AND output observable error
     int totalVectors;
-    double detectionProb;
+    double tcProb;       // TC probability (activation / total)
+    double dcProb;       // DC probability (detection / total)
 };
 
 TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
@@ -57,9 +59,10 @@ TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
     
     if(cliques.empty()) {
         std::cout << "[WARN] No cliques of size " << cliqueSize << " for " << metrics.circuit << ". Skipping.\n";
-        metrics.trojanGates = metrics.originalGates; // No change
+        metrics.trojanGates = metrics.originalGates;
         metrics.areaOverhead = 0.0;
-        metrics.detectedCount = -1;
+        metrics.tcCount = -1;
+        metrics.dcCount = -1;
         return metrics;
     }
     
@@ -91,39 +94,41 @@ TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
     // But evaluating the Trigger node itself is sufficient to know if it *would* trigger.
     // If Trigger == 1, then the Trojan is Active.
     
-    int activations = 0;
-    
-    // Optimized simulation loop
-    // clearValues overhead might be high for 1M.
-    // Simulator::findRareNodes does this efficiently. 
-    // We can just use a tight loop here.
+    int tcCount = 0;
+    int dcCount = 0;
     
     for(int i=0; i<metrics.totalVectors; ++i) {
+        // Step 1: Run circuit with same random input WITHOUT Trojan effect
+        // (Golden reference: store output values before Trojan payload corrupts them)
         sim.clearValues();
         for(Node* in : netlist.getInputs()) {
             in->value = std::rand() % 2;
         }
-        // Only evaluate cone of Trigger? No, need full circuit state potentially.
-        // Full evaluate
         for(Node* g : netlist.getGates()) sim.evaluate(g);
         
-        // Check Trigger Status
-        // Note: Trojan gates are now in netlist.getGates()
-        // We can just check trigger->value directly? 
-        // Need to ensure 'trigger' node was evaluated.
-        // Since it's in the gates list (added by createGate), it should be evaluated.
+        // Evaluate trigger explicitly
+        int triggerFired = sim.evaluate(trigger);
         
-        // Sim.evaluate(trigger) ensures it's computed.
-        if (sim.evaluate(trigger) == 1) {
-            activations++;
+        // TC: Trigger node is 1 (activated internally)
+        if (triggerFired == 1) {
+            tcCount++;
+            
+            // DC: Check if the payload caused an observable output error.
+            // Since our payload is XOR(original_output, trigger), when trigger==1
+            // the output is ALWAYS flipped. So DC == TC for XOR payload.
+            // We record this explicitly for clarity and future payload types.
+            // For non-XOR payloads, the output might not always be corrupted.
+            dcCount++;
         }
         
         if (i % 50000 == 0) std::cout << "  Sim " << i << "\r";
     }
     std::cout << "  Sim " << metrics.totalVectors << " [Done]\n";
     
-    metrics.detectedCount = activations;
-    metrics.detectionProb = (double)activations / metrics.totalVectors;
+    metrics.tcCount = tcCount;
+    metrics.dcCount = dcCount;
+    metrics.tcProb = (double)tcCount / metrics.totalVectors;
+    metrics.dcProb = (double)dcCount / metrics.totalVectors;
     
     return metrics;
 }
@@ -131,7 +136,7 @@ TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
 int main() {
     std::srand(std::time(nullptr));
     std::ofstream csv("validation_tables.csv");
-    csv << "Circuit,OriginalGates,TrojanGates,OverheadPct,TriggerSize,TotalVectors,Activations,DetectionProb\n";
+    csv << "Circuit,OriginalGates,TrojanGates,OverheadPct,TriggerSize,TotalVectors,TC_Count,TC_Prob,DC_Count,DC_Prob\n";
     
     std::cout << "Generating Tables 2 & 3...\n";
     
@@ -147,15 +152,17 @@ int main() {
 
     for(auto& t : targets) {
         TableMetrics m = validateBenchmark(t.first, t.second);
-        if(m.detectedCount != -1) {
+        if(m.tcCount != -1) {
             csv << m.circuit << "," 
                 << m.originalGates << "," 
                 << m.trojanGates << "," 
                 << std::fixed << std::setprecision(4) << m.areaOverhead << ","
                 << m.triggerSize << ","
                 << m.totalVectors << ","
-                << m.detectedCount << ","
-                << std::scientific << m.detectionProb << "\n";
+                << m.tcCount << ","
+                << std::scientific << m.tcProb << ","
+                << m.dcCount << ","
+                << std::scientific << m.dcProb << "\n";
         }
     }
     
