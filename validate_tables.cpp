@@ -53,7 +53,13 @@ TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
     }
     
     CompatibilityGraph cg(&netlist);
-    cg.generateTestVectors(rareNodes);
+    // Detect sequential circuits (contain DFF gates) and cap PODEM to 500 nodes
+    bool isSequential = false;
+    for (Node* g : netlist.getGates()) {
+        if (g->type == GateType::DFF) { isSequential = true; break; }
+    }
+    int limit = isSequential ? 500 : 0;
+    cg.generateTestVectors(rareNodes, limit);
     cg.buildGraph();
     auto cliques = cg.findCliques(cliqueSize);
     

@@ -90,8 +90,14 @@ public:
         
         // 3a: Generate Test Vectors (PODEM)
         std::cout << "\n[ALGORITHM 2] Generating Test Vectors (PODEM)...\n";
+        // Detect sequential circuits (contain DFF gates) and cap PODEM to 500 nodes
+        bool isSequential = false;
+        for (Node* g : netlist.getGates()) {
+            if (g->type == GateType::DFF) { isSequential = true; break; }
+        }
+        int limit = isSequential ? 500 : 0;
         auto podemStart = std::chrono::high_resolution_clock::now();
-        cg.generateTestVectors(rareNodeList);
+        cg.generateTestVectors(rareNodeList, limit);
         auto podemEnd = std::chrono::high_resolution_clock::now();
         metrics.podemTime = std::chrono::duration<double>(podemEnd - podemStart).count();
         

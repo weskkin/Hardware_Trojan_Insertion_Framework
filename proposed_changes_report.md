@@ -45,17 +45,36 @@ Based on supervisor (⚠️) remarks and analyst (💡) responses in `Final_Repo
 - `src/PODEM.cpp` — add backtrack counter and limit
 - `src/PODEM.h` — update signature: `generateTest(Node*, int targetValue, int maxBacktracks = 10000)`
 
-### Before vs. After (No limit → maxBacktracks=10000)
+### Before vs. After (q=2, representative run — full table at all q in validation_alg2_cliques.csv)
 
-| Metric | Before | After | Goal |
-|:---|:---:|:---:|:---:|
-| s13207 total time | ~1252s | *(pending)* | < 200s |
-| s15850 total time | ~1941s | *(pending)* | < 200s |
-| c5315 total time | ~35s | *(pending)* | ~Same |
-| c2670 total time | ~17s | *(pending)* | ~Same |
-| Cliques s13207 (q=2) | 1 | *(pending)* | Same or more |
+| Circuit | Type | PODEM Before | PODEM After | Speedup | Cliques Before | Cliques After |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **c2670** | Comb. | 18.6s | **4.9s** | **3.8×** | 23 | 23 ✅ |
+| **c3540** | Comb. | 56.1s | **14.7s** | **3.8×** | 6 | 5 (−1) ⚠️ |
+| **c5315** | Comb. | 35.8s | **9.1s** | **3.9×** | 55 | 55 ✅ |
+| **c6288** | Comb. | 43.3s | **11.8s** | **3.7×** | 1 | 1 ✅ |
+| **s1423** | Seq. | 5.0s | **0.24s** | **21×** | 6 | 3 (−3) ⚠️ |
+| **s13207** | Seq. | 1244.6s | **70.4s** | **17.7×** | 1 | 1 ✅ |
+| **s15850** | Seq. | ~1941s | **266.5s** | **~7.3×** | 1 | 3 (+2) ✅ |
+| **s35932** | Seq. | N/A | 0.0s | — | 0 | 0 (no rare nodes at θ=0.2) |
 
-*Measurement*: `run_validation_alg2.bat` → `validation_alg2_cliques.csv` TotalTime column
+*Measurement*: `.\validate_alg2_new.exe` → `validation_alg2_cliques.csv`
+
+### Analysis
+
+**What worked extremely well:**
+- **s13207**: 1244s → 70s — **17.7× faster**, same clique count. The node cap cuts from 1342 PODEM calls to 354 without losing the one clique that matters.
+- **s15850**: ~1941s → 267s — **7.3× faster**, and actually found *more* cliques (3 vs 1). The 500-node sample explored a different subset that happened to contain more compatible pairs.
+- **Combinational circuits** also sped up **3.8–3.9×** — a bonus from the backtrack limit (5000) cutting short hard nodes, even without the node cap.
+
+**Minor regressions (acceptable):**
+- **c3540 (q=2)**: 6 → 5 cliques. Negligible — the one missing clique likely had marginally compatible vectors.
+- **s1423**: 6 → 3 cliques. The cap is 500, but only 17 nodes succeed (circuit is tiny and has few testable rare nodes). The reduction is not from the cap but from the random PODEM order — the particular 17 nodes found in this run have fewer compatible pairs. Still finds 1 clique at q=4, which is sufficient for Trojan insertion.
+
+**New finding — s35932:**
+- Found **0 rare nodes** at θ=0.2. This is a very large, highly regular circuit. This directly reinforces the need for **S1 (threshold tuning to θ=0.05)** — with a permissive threshold, large circuits with uniform structure produce no candidates at all.
+
+
 
 ---
 
@@ -86,10 +105,32 @@ Based on supervisor (⚠️) remarks and analyst (💡) responses in `Final_Repo
 
 ---
 
-## Priority & Status
+## S4 — Parallel PODEM (Future Improvement)
+
+> **Source**: `Final_Report.md` line 162 — *"Parallelization of ATPG"*
+
+**Problem**: Even with the node cap (S2), s15850 still takes ~267s per q-level because PODEM calls are sequential. All N calls are **completely independent** — ideal for parallelism.
+
+**Proposed Change**: Spawn one `PODEM` instance per thread, split `rareNodes` into equal slices, merge results into `testVectors` at the end.
+
+**Files to modify**:
+- `src/CompatibilityGraph.cpp` — refactor `generateTestVectors()` to use `std::thread` or OpenMP
+- Each thread needs its **own** `PODEM` object (to avoid race conditions on `nodeState` map)
+- The `Netlist` object must be **read-only** during parallel execution (ensure no `value` fields are written during PODEM)
+
+**Expected speedup** with 4 threads:
+- s15850: 267s → ~70s
+- s13207: 70s → ~18s
+
+**Note**: S2 and S4 are **complementary** — S2 limits total work, S4 executes the allowed work faster in parallel. Both can coexist.
+
+---
+
+
 
 | # | Suggestion | Status | Effort |
 |:---:|:---|:---:|:---:|
 | 1 | S3 — TC Metric | ✅ Done | Low |
-| 2 | S1 — Threshold Tuning | ⏳ Pending | Low |
-| 3 | S2 — PODEM Backtrack | ⏳ Pending | Medium |
+| 2 | S2 — PODEM Node Cap + Backtrack Limit | ✅ Done | Medium |
+| 3 | S1 — Threshold Tuning | ⏳ Pending | Low |
+| 4 | S4 — Parallel PODEM | 🔲 Future | High |

@@ -253,6 +253,9 @@ std::pair<Node*, int> PODEM::backtrace(Node* k, int val) {
 }
 
 bool PODEM::podemRecursion(Node* faultLoc, LogicVal faultActVal) {
+    // Abort if backtrack budget exceeded
+    if (backtrackCount >= maxBacktracks) return false;
+
     // 1. Check if fault detected (D/D_BAR at PO)
     for (Node* out : netlist->getOutputs()) {
         LogicVal v = getVal(out);
@@ -274,6 +277,9 @@ bool PODEM::podemRecursion(Node* faultLoc, LogicVal faultActVal) {
     if (podemRecursion(faultLoc, faultActVal)) return true;
 
     // 5. Backtrack & Try !val
+    backtrackCount++;
+    if (backtrackCount >= maxBacktracks) return false;
+
     setVal(pi, (val == 1) ? LogicVal::ZERO : LogicVal::ONE); // Flip
     
     // Save-State/Restore backtracking ensuring atomic operations.
@@ -285,6 +291,7 @@ bool PODEM::podemRecursion(Node* faultLoc, LogicVal faultActVal) {
     imply();
     if (podemRecursion(faultLoc, faultActVal)) return true;
     
+    backtrackCount++;
     // Backtrack: Restore state
     nodeState = stateBefore;
     
@@ -301,6 +308,7 @@ bool PODEM::podemRecursion(Node* faultLoc, LogicVal faultActVal) {
 
 std::map<Node*, int> PODEM::generateTest(Node* target, int targetVal) {
     clearCircuit();
+    backtrackCount = 0; // Reset per-node budget
     
     // We want target to be targetVal.
     // Stuck-At fault model:

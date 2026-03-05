@@ -10,7 +10,7 @@ public:
     CompatibilityGraph(Netlist* netlist);
     
     // 1. Run PODEM on all rare nodes to get test vectors
-    void generateTestVectors(const std::vector<Node*>& rareNodes);
+    void generateTestVectors(const std::vector<Node*>& rareNodes, int maxSuccessful = 0);
     
     // 2. Build graph (edges between compatible nodes)
     void buildGraph();

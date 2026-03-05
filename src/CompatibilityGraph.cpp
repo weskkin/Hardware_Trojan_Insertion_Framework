@@ -3,11 +3,20 @@
 
 CompatibilityGraph::CompatibilityGraph(Netlist* nl) : netlist(nl), podem(nl) {}
 
-void CompatibilityGraph::generateTestVectors(const std::vector<Node*>& rareNodes) {
+void CompatibilityGraph::generateTestVectors(const std::vector<Node*>& rareNodes, int maxSuccessful) {
     std::cout << "Generating Test Vectors for " << rareNodes.size() << " rare nodes..." << std::endl;
+    if (maxSuccessful > 0) {
+        std::cout << "  (Capped at " << maxSuccessful << " successful vectors)" << std::endl;
+    }
     int successCount = 0;
     
     for (size_t i = 0; i < rareNodes.size(); ++i) {
+        // Early stop: enough vectors found for clique search
+        if (maxSuccessful > 0 && successCount >= maxSuccessful) {
+            std::cout << "  Early stop: reached " << maxSuccessful << " successful vectors.      " << std::endl;
+            break;
+        }
+
         Node* node = rareNodes[i];
         if (node->rare_value == -1) continue; // Should not happen
         

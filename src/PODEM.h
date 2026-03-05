@@ -54,6 +54,10 @@ private:
     std::stack<Node*> decisionStack;
     std::map<Node*, LogicVal> nodeState;
 
+    // Backtrack limit to prevent exponential runtime on large circuits
+    int backtrackCount = 0;
+    int maxBacktracks = 5000; // Default: 5000 backtracks per node
+
     LogicVal getVal(Node* n);
     void setVal(Node* n, LogicVal v);
 };
