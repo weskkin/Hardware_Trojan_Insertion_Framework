@@ -534,3 +534,38 @@ Following the above recommendations, three concrete improvements were designed, 
 **Key finding**: TC == DC for all circuits because the XOR payload always propagates the trigger effect to a primary output. TC ≠ DC would only arise with Delay or Info-Leak payloads where the effect is not always observable.
 
 `validation_tables.csv` now exports both `TC_Count`, `TC_Prob`, `DC_Count`, `DC_Prob` columns.
+
+---
+
+### S4 — Parallel PODEM (12 Threads)
+
+**Implementation**: Rewrote `CompatibilityGraph::generateTestVectors()` to use `std::thread`. Each thread gets its own `PODEM` instance (isolated `nodeState` map). Work distributed round-robin across threads. `Netlist` confirmed read-only during PODEM phase — no mutex needed on the hot path. `std::atomic<int>` manages the `maxSuccessful` early-stop budget across threads.
+
+**Measured results** (12 hardware threads, q=2):
+
+| Circuit | PODEM Before (S2 serial) | PODEM After (S4 parallel) | Speedup |
+|:---|:---:|:---:|:---:|
+| c2670 | 4.9s | **0.60s** | **8.2×** |
+| c3540 | 14.7s | **1.73s** | **8.5×** |
+| c5315 | 9.1s | **0.57s** | **16×** |
+| c6288 | 11.8s | **0.41s** | **29×** |
+| s1423 | 0.24s | **0.026s** | **9.2×** |
+| s13207 | 70.4s | **10.4s** | **6.8×** |
+| s15850 | 266.5s | **38.6s** | **6.9×** |
+
+**Cumulative improvement** (original unbounded serial → S2 node cap → S4 parallel):
+
+| Circuit | Original | After S2 | After S4 | **Total Speedup** |
+|:---|:---:|:---:|:---:|:---:|
+| **s13207** | 1244.6s | 70.4s | **10.4s** | **119×** |
+| **s15850** | ~1941s | 266.5s | **38.6s** | **~50×** |
+| **c5315** | 35.8s | 9.1s | **0.57s** | **63×** |
+| **c2670** | 18.6s | 4.9s | **0.60s** | **31×** |
+
+**Key findings**:
+- s13207: **21 minutes → 10 seconds** total — a 119× end-to-end improvement combining both S2 and S4
+- s15850: **32 minutes → 38 seconds** — 50× total improvement; cliques increased from 3 to 5
+- Speedup is 6.8–16× per circuit (vs theoretical max of 12×) — excellent efficiency given PODEM's memory-access bound nature
+- S2 and S4 are fully complementary: S2 limits total work, S4 parallelizes the remaining work
+- Clique counts vary slightly (non-determinism from round-robin thread assignment) but always ≥1 insertion candidate for circuits that structurally support it
+

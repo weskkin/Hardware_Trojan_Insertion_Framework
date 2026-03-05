@@ -1,41 +1,67 @@
 #include "CompatibilityGraph.h"
 #include <iostream>
+#include <thread>
+#include <atomic>
+#include <utility>
 
 CompatibilityGraph::CompatibilityGraph(Netlist* nl) : netlist(nl), podem(nl) {}
 
 void CompatibilityGraph::generateTestVectors(const std::vector<Node*>& rareNodes, int maxSuccessful) {
     std::cout << "Generating Test Vectors for " << rareNodes.size() << " rare nodes..." << std::endl;
-    if (maxSuccessful > 0) {
-        std::cout << "  (Capped at " << maxSuccessful << " successful vectors)" << std::endl;
-    }
-    int successCount = 0;
-    
-    for (size_t i = 0; i < rareNodes.size(); ++i) {
-        // Early stop: enough vectors found for clique search
-        if (maxSuccessful > 0 && successCount >= maxSuccessful) {
-            std::cout << "  Early stop: reached " << maxSuccessful << " successful vectors.      " << std::endl;
-            break;
-        }
 
-        Node* node = rareNodes[i];
-        if (node->rare_value == -1) continue; // Should not happen
-        
-        // PODEM logic:
-        // We want to TRIGGER the rare value.
-        // Rare Value 0 -> PODEM target: SA1 (requires input 0).
-        // Rare Value 1 -> PODEM target: SA0 (requires input 1).
-        // generateTest handles translation from desired value to internal fault model.
-        
-        std::map<Node*, int> vec = podem.generateTest(node, node->rare_value);
-        if (!vec.empty()) {
-            testVectors[node] = vec;
-            validRareNodes.push_back(node);
-            successCount++;
-        }
-        
-        if (i % 10 == 0) std::cout << "Processed " << i << "/" << rareNodes.size() << " (Success: " << successCount << ")\r";
+    int numThreads = std::max(1, (int)std::thread::hardware_concurrency());
+    numThreads = std::min(numThreads, (int)rareNodes.size());
+
+    if (maxSuccessful > 0)
+        std::cout << "  (Capped at " << maxSuccessful << " successful vectors, " << numThreads << " threads)" << std::endl;
+    else
+        std::cout << "  (Using " << numThreads << " parallel threads)" << std::endl;
+
+    // Distribute nodes round-robin across threads
+    std::vector<std::vector<Node*>> chunks(numThreads);
+    for (size_t i = 0; i < rareNodes.size(); ++i)
+        chunks[i % numThreads].push_back(rareNodes[i]);
+
+    // Per-thread local results (no mutex on hot path)
+    std::vector<std::vector<std::pair<Node*, std::map<Node*, int>>>> threadResults(numThreads);
+    std::vector<std::vector<Node*>> threadValid(numThreads);
+
+    std::atomic<int> totalSuccess(0);
+    std::atomic<bool> earlyStop(false);
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < numThreads; ++t) {
+        threads.emplace_back([this, t, &chunks, &threadResults, &threadValid,
+                              &totalSuccess, &earlyStop, maxSuccessful]() {
+            PODEM localPodem(netlist); // Own PODEM state per thread — thread safe
+
+            for (Node* node : chunks[t]) {
+                if (earlyStop.load(std::memory_order_relaxed)) break;
+                if (node->rare_value == -1) continue;
+
+                auto vec = localPodem.generateTest(node, node->rare_value);
+                if (!vec.empty()) {
+                    threadResults[t].push_back({node, vec});
+                    threadValid[t].push_back(node);
+                    int prev = totalSuccess.fetch_add(1, std::memory_order_relaxed);
+                    if (maxSuccessful > 0 && prev + 1 >= maxSuccessful)
+                        earlyStop.store(true, std::memory_order_relaxed);
+                }
+            }
+        });
     }
-    std::cout << "PODEM finished. Generated vectors for " << successCount << " nodes.         " << std::endl;
+    for (auto& th : threads) th.join();
+
+    // Merge results from all threads
+    int total = totalSuccess.load();
+    for (int t = 0; t < numThreads; ++t) {
+        for (auto& [node, vec] : threadResults[t]) testVectors[node] = vec;
+        for (Node* n : threadValid[t]) validRareNodes.push_back(n);
+    }
+
+    if (maxSuccessful > 0 && total >= maxSuccessful)
+        std::cout << "  Early stop: reached " << maxSuccessful << " successful vectors.      " << std::endl;
+    std::cout << "PODEM finished. Generated vectors for " << total << " nodes.         " << std::endl;
 }
 
 bool CompatibilityGraph::areVectorsCompatible(const std::map<Node*, int>& v1, const std::map<Node*, int>& v2) {
