@@ -45,7 +45,7 @@ TableMetrics validateBenchmark(std::string benchPath, int cliqueSize) {
 
     // 2. Identify Rare Nodes & Clique (Standard Setup)
     Simulator sim(&netlist);
-    sim.findRareNodes(10000, 0.20); // 10k setup
+    sim.findRareNodes(10000, 0.10); // 10k setup, θ=0.10 (S1: balanced stealth threshold)
     
     std::vector<Node*> rareNodes;
     for(Node* n : netlist.getAllNodes()) {

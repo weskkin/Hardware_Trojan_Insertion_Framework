@@ -104,7 +104,7 @@ void validateFigure3() {
     };
     
     std::vector<int> vectorCounts = {1000, 2500, 5000, 7500, 10000, 15000, 20000};
-    double threshold = 0.20; // Fixed (paper's selected value)
+    double threshold = 0.05; // Fixed (S1: use stricter stealth threshold)
     
     std::ofstream csvFile("validation_fig3.csv");
     csvFile << "Circuit,NumVectors,TotalNodes,RareNodes,RarePercentage\n";

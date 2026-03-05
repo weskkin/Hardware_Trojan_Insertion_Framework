@@ -38,7 +38,7 @@ class Alg2Validator {
 public:
     Alg2Validator() {}
     
-    Alg2Metrics runValidation(const std::string& benchPath, int cliqueSize, double threshold = 0.20, int numVectors = 10000) {
+    Alg2Metrics runValidation(const std::string& benchPath, int cliqueSize, double threshold = 0.10, int numVectors = 10000) {
         Alg2Metrics metrics;
         metrics.circuit = fs::path(benchPath).stem().string();
         metrics.minCliqueSize = cliqueSize;

@@ -35,7 +35,7 @@ bool validateCircuit(std::string benchPath, int cliqueSizeTarget) {
 
     // 2. Algorithm 1: Rare Nodes
     Simulator sim(&netlist);
-    sim.findRareNodes(10000, 0.20); // 10k vectors, 20%
+    sim.findRareNodes(10000, 0.10); // 10k vectors, θ=0.10 (S1: balanced stealth threshold)
     
     std::vector<Node*> rareNodes;
     for(Node* n : netlist.getAllNodes()) {

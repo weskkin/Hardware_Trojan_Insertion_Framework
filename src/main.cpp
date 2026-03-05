@@ -24,7 +24,7 @@ void processFile(const std::string& inputPath, const std::string& outputDir) {
 
     // Phase 1: Simulation
     Simulator sim(&netlist);
-    sim.findRareNodes(10000, 0.2); 
+    sim.findRareNodes(10000, 0.10); // θ=0.10: balanced stealth/feasibility (S1)
 
     std::vector<Node*> rareNodes;
     for(Node* n : netlist.getAllNodes()) {
